@@ -1,0 +1,1 @@
+- Learn by optimize these code. For example: turn the block: read(...) into a function with default parameters

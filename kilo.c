@@ -13,6 +13,18 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f) // & in this line is bitwise-AND operator
 
+enum editorKey {
+  ARROW_LEFT = 1000,
+  ARROW_RIGHT, // = 1001 by convention
+  ARROW_UP,
+  ARROW_DOWN,
+	A_UPPER,
+  D_UPPER,
+  W_UPPER,
+	S_UPPER 
+
+};
+
 /*** data ***/
 
 
@@ -72,20 +84,51 @@ void enableRawMode(){
 																					// ISIG : prevent Ctrl-C, -Z to send sign
 																					// IEXTEN : prevent effect of Ctrl-V, -O
 	raw.c_cc[VMIN] = 0;
-  raw.c_cc[VTIME] = 1;																					
+  raw.c_cc[VTIME] = 1; // interval between reads
 
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
 
 
-char editorReadKey() {
+int editorReadKey() {
 	// Wait for user input
-	int nread=0;
+	int nread;
 	char c;
-	while ((nread == read(STDIN_FILENO, &c, 1)) != 1){
+	while ((nread = read(STDIN_FILENO, &c, 1)) != 1){
 		if (nread == -1 && errno != EAGAIN) die("read");
 	}
-	return c;
+
+	// handle upper case cursor moving
+	switch(c){
+		case 'W': return W_UPPER;
+		case 'A': return A_UPPER;
+		case 'S': return S_UPPER;
+		case 'D': return D_UPPER;
+		case 'w': return ARROW_UP;
+		case 'a': return ARROW_LEFT;
+		case 's': return ARROW_DOWN;
+		case 'd': return ARROW_RIGHT;
+	}
+
+	if (c == '\x1b') {
+    char seq[3];
+		// These 2 reads are to ensure after ~ 0.1 second after user pressed a key starts with Esc
+		// The next 2 bytes are belong to arrow keys
+		// Note that arrow key is an Esc key with a char : A,B,C,D. E.g : \x1b[A
+    if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+    if (seq[0] == '[' ) {
+      switch (seq[1]) {
+				case 'A': return ARROW_UP; // \x1b[A -> up arrows
+				case 'B': return ARROW_DOWN; // \x1b[B -> down arrows
+        case 'C': return ARROW_RIGHT;
+        case 'D': return ARROW_LEFT;
+      }
+    }
+    return '\x1b';
+  } else {
+    return c;
+  }
 }
 
 int getCursorPosition(int *rows, int*cols){
@@ -145,51 +188,51 @@ void abFree(struct abuf *ab){
 
 /*** input ***/
 
-void editorMoveCursor(char key){
+void editorMoveCursor(int key){
 	switch(key){
-		case 'a':
+		case ARROW_LEFT:
 			E.cx--;
 			break;
-		case 'd':
+		case ARROW_RIGHT:
 			E.cx++;
 			break;
-		case 'w':
+		case ARROW_UP:
 			E.cy--;
 			break;
-		case 's':
+		case ARROW_DOWN:
 			E.cy++;
 			break;
-		case 'A':
+		case A_UPPER:
 			E.cx-=10;
 			break;
-		case 'D':
+		case D_UPPER:
 			E.cx+=10;
 			break;
-		case 'W':
+		case W_UPPER:
 			E.cy-=10;
 			break;
-		case 'S':
+		case S_UPPER:
 			E.cy+=10;
 			break;
 	}
 }
 
 void editorProcessKeypress(){
-	char c = editorReadKey();
+	int c = editorReadKey();
 
 	switch(c){
 		case CTRL_KEY('q'):
 			clearScreen();
 			exit(0);
 			break;
-		case 'w':
-		case 'a':
-		case 's':
-		case 'd':
-		case 'W':
-		case 'A':
-		case 'S':
-		case 'D':
+		case ARROW_LEFT:
+		case ARROW_RIGHT:
+		case ARROW_UP:
+		case ARROW_DOWN:
+		case W_UPPER:
+		case A_UPPER:
+		case S_UPPER:
+		case D_UPPER:
 			editorMoveCursor(c);
 			break;
 	}
@@ -224,11 +267,10 @@ void editorDrawRows(struct abuf *ab){
 void editorRefreshScreen() {
   struct abuf ab = ABUF_INIT;
 	
-	// clear screen
 	abAppend(&ab, "\x1b[?25l", 6); // Turn off cursor before refresh 
-  abAppend(&ab, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[H", 3); // clear screen
 
-  editorDrawRows(&ab);
+  editorDrawRows(&ab); // draw all lines have start with char: ~
 	char buf[32];
 	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
 	abAppend(&ab, buf, strlen(buf)); // position cursor at user current position
