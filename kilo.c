@@ -14,15 +14,19 @@
 #define CTRL_KEY(k) ((k) & 0x1f) // & in this line is bitwise-AND operator
 
 enum editorKey {
-  ARROW_LEFT = 1000,
-  ARROW_RIGHT, // = 1001 by convention
-  ARROW_UP,
-  ARROW_DOWN,
+	ARROW_LEFT = 1000,
+	ARROW_RIGHT, // = 1001 by convention
+	ARROW_UP,
+	ARROW_DOWN,
+	DEL_KEY,
+	HOME_KEY,
+	END_KEY,
 	A_UPPER,
-  D_UPPER,
-  W_UPPER,
-	S_UPPER 
-
+	D_UPPER,
+	W_UPPER,
+	S_UPPER,
+	PAGE_UP,
+	PAGE_DOWN,
 };
 
 /*** data ***/
@@ -44,10 +48,10 @@ struct editorConfig E;
 
 void clearScreen() {
 	write(STDOUT_FILENO, "\x1b[2J", 4); //4 means write 4 bytes out to terminal
-															// \x1b ~ 27 ~ esc
-															// esc + [ => means escape sequences
-															// J is the erase command
-															// 2 is the argument for J. and it means clear the entire screen
+	// \x1b ~ 27 ~ esc
+	// esc + [ => means escape sequences
+	// J is the erase command
+	// 2 is the argument for J. and it means clear the entire screen
 	write(STDOUT_FILENO, "\x1b[H", 3); // position cursor
 }
 
@@ -72,19 +76,19 @@ void enableRawMode(){
 
 	// c_iflag : input flags
 	raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON); // IXON: prevent effect of Ctrl-S,-Q
-																	// ICRNL: fix Ctrl-M
+	// ICRNL: fix Ctrl-M
 	raw.c_cflag |= (CS8);
-	
+
 	// c_oflag : output flags
 	raw.c_oflag &= ~(OPOST); // OPOST: turn off rendering things like \n as new line
-	
+
 	// c_flag : local flags
 	raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN); // ECHO turn off echo when we type 
-																					// ICANON : turn of CANONICAL mode
-																					// ISIG : prevent Ctrl-C, -Z to send sign
-																					// IEXTEN : prevent effect of Ctrl-V, -O
+	// ICANON : turn of CANONICAL mode
+	// ISIG : prevent Ctrl-C, -Z to send sign
+	// IEXTEN : prevent effect of Ctrl-V, -O
 	raw.c_cc[VMIN] = 0;
-  raw.c_cc[VTIME] = 1; // interval between reads
+	raw.c_cc[VTIME] = 1; // interval between reads
 
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
@@ -111,24 +115,50 @@ int editorReadKey() {
 	}
 
 	if (c == '\x1b') {
-    char seq[3];
+		char seq[3];
 		// These 2 reads are to ensure after ~ 0.1 second after user pressed a key starts with Esc
 		// The next 2 bytes are belong to arrow keys
 		// Note that arrow key is an Esc key with a char : A,B,C,D. E.g : \x1b[A
-    if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
-    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
-    if (seq[0] == '[' ) {
-      switch (seq[1]) {
-				case 'A': return ARROW_UP; // \x1b[A -> up arrows
-				case 'B': return ARROW_DOWN; // \x1b[B -> down arrows
-        case 'C': return ARROW_RIGHT;
-        case 'D': return ARROW_LEFT;
-      }
-    }
-    return '\x1b';
-  } else {
-    return c;
-  }
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+
+		// moving cursor keys
+		if (seq[0] == '[' ) {
+			// Page up, page down
+			if (seq[1] >= '0' && seq[1] <= '9') {
+				if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+				if (seq[2] == '~') {
+					switch (seq[1]) {
+						case '1': return HOME_KEY;
+						case '4': return END_KEY;
+						case '5': return PAGE_UP;
+						case '6': return PAGE_DOWN;
+						case '7': return HOME_KEY;
+						case '8': return END_KEY;
+						case '3': return DEL_KEY;
+					}
+				}
+			} else {	
+				// arrow keys
+				switch (seq[1]) {
+					case 'A': return ARROW_UP; // \x1b[A -> up arrows
+					case 'B': return ARROW_DOWN; // \x1b[B -> down arrows
+					case 'C': return ARROW_RIGHT;
+					case 'D': return ARROW_LEFT;
+					case 'H': return HOME_KEY;
+					case 'F': return END_KEY;
+				}
+			}
+		}else if (seq[0] == 'O') {
+			switch (seq[1]) {
+				case 'H': return HOME_KEY;
+				case 'F': return END_KEY;
+			}
+		}
+		return '\x1b';
+	} else {
+		return c;
+	}
 }
 
 int getCursorPosition(int *rows, int*cols){
@@ -136,13 +166,13 @@ int getCursorPosition(int *rows, int*cols){
 	unsigned int i = 0;
 
 	if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1; // send command to get the current cursor position
-																													// with n command parsed with a paramenter : 6 (6n)
+	// with n command parsed with a paramenter : 6 (6n)
 
 	while(i < sizeof(buf) -1 ) { // after sending command. This is how we read the response
-															 // The response will have format : rows;colsR
-			if(read(STDIN_FILENO, &buf[i], 1) != 1) break;
-			if (buf[i] == 'R') break; // break until we read the R char
-			i++;
+		// The response will have format : rows;colsR
+		if(read(STDIN_FILENO, &buf[i], 1) != 1) break;
+		if (buf[i] == 'R') break; // break until we read the R char
+		i++;
 	}
 	if (buf[0] != '\x1b' || buf[1] != '[') return -1;
 	if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
@@ -152,7 +182,7 @@ int getCursorPosition(int *rows, int*cols){
 
 int getWindowSize(int *rows, int *cols){
 	struct winsize ws;
-	
+
 	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0 ){
 		// move cursor 999 forward (C command), move cursor 999 down (B command)
 		if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12 ) return -1;
@@ -191,28 +221,32 @@ void abFree(struct abuf *ab){
 void editorMoveCursor(int key){
 	switch(key){
 		case ARROW_LEFT:
-			E.cx--;
+			if (E.cx!=0) E.cx--;
 			break;
 		case ARROW_RIGHT:
-			E.cx++;
+			if (E.cx!= E.screencols-1) E.cx++;
 			break;
 		case ARROW_UP:
-			E.cy--;
+			if(E.cy!=0)	E.cy--;
 			break;
 		case ARROW_DOWN:
-			E.cy++;
+			if (E.cy != E.screenrows-1) E.cy++;
 			break;
 		case A_UPPER:
-			E.cx-=10;
+			if (E.cx -10 <= 0) E.cx = 0;
+			else E.cx -= 10;
 			break;
 		case D_UPPER:
-			E.cx+=10;
+			if (E.cx + 10 >= E.screencols) E.cx = E.screencols-1;
+			else E.cx += 10;
 			break;
 		case W_UPPER:
-			E.cy-=10;
+			if (E.cy - 10 <= 0) E.cy = 0;
+			else E.cy-=10;
 			break;
 		case S_UPPER:
-			E.cy+=10;
+			if (E.cy + 10 >= E.screenrows) E.cy = E.screenrows-1;
+			else E.cy+=10;
 			break;
 	}
 }
@@ -225,6 +259,22 @@ void editorProcessKeypress(){
 			clearScreen();
 			exit(0);
 			break;
+
+		case HOME_KEY:
+			E.cx = 0;
+			break;
+		case END_KEY:
+			E.cx = E.screencols - 1;
+			break;
+
+		case PAGE_UP:
+		case PAGE_DOWN:
+			{
+				int times = E.screenrows;
+				while (times--)
+					editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+			}
+			break;
 		case ARROW_LEFT:
 		case ARROW_RIGHT:
 		case ARROW_UP:
@@ -236,7 +286,7 @@ void editorProcessKeypress(){
 			editorMoveCursor(c);
 			break;
 	}
-	
+
 }
 
 /*** output ***/
@@ -245,14 +295,14 @@ void editorDrawRows(struct abuf *ab){
 		if (y==E.screenrows / 3){
 			char welcome[80];
 			int welcomelen = snprintf(welcome, sizeof(welcome),
-        "Welcome to my VIM  -- version %s", KILO_VERSION);
+					"Welcome to my VIM  -- version %s", KILO_VERSION);
 
 			if (welcomelen > E.screencols) welcomelen = E.screencols;
 
 			int padding = (E.screencols - welcomelen) / 2;
 			if(padding) abAppend(ab, "~", 1);
 			while (padding --) abAppend(ab, " ", 1);
-			
+
 			abAppend(ab, welcome, welcomelen); // say welcome to users
 		}
 		else{
@@ -265,28 +315,28 @@ void editorDrawRows(struct abuf *ab){
 
 
 void editorRefreshScreen() {
-  struct abuf ab = ABUF_INIT;
-	
-	abAppend(&ab, "\x1b[?25l", 6); // Turn off cursor before refresh 
-  abAppend(&ab, "\x1b[H", 3); // clear screen
+	struct abuf ab = ABUF_INIT;
 
-  editorDrawRows(&ab); // draw all lines have start with char: ~
+	abAppend(&ab, "\x1b[?25l", 6); // Turn off cursor before refresh 
+	abAppend(&ab, "\x1b[H", 3); // clear screen
+
+	editorDrawRows(&ab); // draw all lines have start with char: ~
 	char buf[32];
 	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
 	abAppend(&ab, buf, strlen(buf)); // position cursor at user current position
-	
+
 	abAppend(&ab, "\x1b[?25h", 6); // Turn on cursor
 
-  write(STDOUT_FILENO, ab.b, ab.len);
-  abFree(&ab);
+	write(STDOUT_FILENO, ab.b, ab.len);
+	abFree(&ab);
 }
 
 /*** init ***/
 
 void initEditor(){
+	if (getWindowSize(&E.screenrows, &E.screencols) == -1 ) die("WindowSize");
 	E.cx = 0;
 	E.cy = 0;
-	if (getWindowSize(&E.screenrows, &E.screencols) == -1 ) die("WindowSize");
 }
 
 int main(){
