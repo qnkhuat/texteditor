@@ -226,7 +226,6 @@ void editorOpen(char* filename){
 	char *line = NULL;
 	size_t linecap = 0;
 	ssize_t linelen;
-	linelen = getline(&line, &linecap, fp);
 
 	while ((linelen = getline(&line, &linecap, fp)) != -1) {
 		// strip out the last char if it is \n or \r
@@ -234,7 +233,6 @@ void editorOpen(char* filename){
 					line[linelen -1] == '\n' || line[linelen -1] == '\r')){
 			linelen--;
 		}
-		printf("%s", line);
 		editorAppendRow(line, linelen);
 	}
 
