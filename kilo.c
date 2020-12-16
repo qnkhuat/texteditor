@@ -9,6 +9,11 @@
 
 
 /*** defines ***/
+// fix errors when run getline
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #define KILO_VERSION "0.0.0"
 
 #define CTRL_KEY(k) ((k) & 0x1f) // & in this line is bitwise-AND operator
@@ -31,11 +36,18 @@ enum editorKey {
 
 /*** data ***/
 
+// The typedef lets us refer to the type as erow instead of struct erow
+typedef struct erow{ // editor row
+	int size;
+	char * chars;
+} erow;
+
 
 struct editorConfig { 
 	int cx, cy;
-	int screenrows;
-	int screencols;
+	int screenrows, screencols;
+	int numrows;
+	erow *row;
 	struct termios orig_termios;
 };
 
@@ -194,6 +206,43 @@ int getWindowSize(int *rows, int *cols){
 	}
 }
 
+/*** row operations ***/
+void editorAppendRow(char *s, size_t len){
+	E.row = realloc(E.row, sizeof(erow) * (E.numrows +1));
+
+	int at = E.numrows; // Current row index
+	E.row[at].size = len;
+	E.row[at].chars = malloc(len+1);
+	memcpy(E.row[at].chars, s, len);
+	E.row[at].chars[len] = '\0';
+	E.numrows++;
+}
+
+/*** file i/o ***/
+void editorOpen(char* filename){
+	FILE *fp = fopen(filename, "r");
+	if (!fp) die("fopen");
+
+	char *line = NULL;
+	size_t linecap = 0;
+	ssize_t linelen;
+	linelen = getline(&line, &linecap, fp);
+
+	while ((linelen = getline(&line, &linecap, fp)) != -1) {
+		// strip out the last char if it is \n or \r
+		while (linelen > 0 && (
+					line[linelen -1] == '\n' || line[linelen -1] == '\r')){
+			linelen--;
+		}
+		printf("%s", line);
+		editorAppendRow(line, linelen);
+	}
+
+	free(line);
+	fclose(fp);
+}
+
+
 /*** append buffer ***/
 struct abuf {
 	char *b;
@@ -292,21 +341,28 @@ void editorProcessKeypress(){
 /*** output ***/
 void editorDrawRows(struct abuf *ab){
 	for(int y=0; y< E.screenrows; y++){
-		if (y==E.screenrows / 3){
-			char welcome[80];
-			int welcomelen = snprintf(welcome, sizeof(welcome),
-					"Welcome to my VIM  -- version %s", KILO_VERSION);
+		if(y >= E.numrows ){
+			// display welcome message
+			if (E.numrows == 0 && y==E.screenrows / 3){
+				char welcome[80];
+				int welcomelen = snprintf(welcome, sizeof(welcome),
+						"Welcome to my VIM  -- version %s", KILO_VERSION);
 
-			if (welcomelen > E.screencols) welcomelen = E.screencols;
+				if (welcomelen > E.screencols) welcomelen = E.screencols;
 
-			int padding = (E.screencols - welcomelen) / 2;
-			if(padding) abAppend(ab, "~", 1);
-			while (padding --) abAppend(ab, " ", 1);
+				int padding = (E.screencols - welcomelen) / 2;
+				if(padding) abAppend(ab, "~", 1);
+				while (padding --) abAppend(ab, " ", 1);
 
-			abAppend(ab, welcome, welcomelen); // say welcome to users
-		}
-		else{
-			abAppend(ab, "~", 1);
+				abAppend(ab, welcome, welcomelen); // say welcome to users
+			}
+			else{
+				abAppend(ab, "~", 1);
+			}
+		} else {
+			int len = E.row[y].size;
+			if (len > E.screencols ) len = E.screencols;
+			abAppend(ab, E.row[y].chars, len);
 		}
 		abAppend(ab, "\x1b[K", 3); // clear the current line
 		if (y < E.screenrows -1) abAppend(ab, "\r\n", 2);
@@ -334,14 +390,19 @@ void editorRefreshScreen() {
 /*** init ***/
 
 void initEditor(){
-	if (getWindowSize(&E.screenrows, &E.screencols) == -1 ) die("WindowSize");
 	E.cx = 0;
 	E.cy = 0;
+	E.numrows = 0;
+	if (getWindowSize(&E.screenrows, &E.screencols) == -1 ) die("WindowSize");
 }
 
-int main(){
+int main(int argc, char *argv[]){
 	enableRawMode();
 	initEditor();
+	if (argc >= 2) {
+    editorOpen(argv[1]);
+  }
+	
 
 	while(1){
 		editorRefreshScreen();
