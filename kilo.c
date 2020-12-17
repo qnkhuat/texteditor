@@ -45,6 +45,7 @@ typedef struct erow{ // editor row
 
 struct editorConfig { 
 	int cx, cy;
+	int rowoff;
 	int screenrows, screencols;
 	int numrows;
 	erow *row;
@@ -277,7 +278,7 @@ void editorMoveCursor(int key){
 			if(E.cy!=0)	E.cy--;
 			break;
 		case ARROW_DOWN:
-			if (E.cy != E.screenrows-1) E.cy++;
+			if (E.cy < E.numrows) E.cy++;
 			break;
 		case A_UPPER:
 			if (E.cx -10 <= 0) E.cx = 0;
@@ -292,7 +293,7 @@ void editorMoveCursor(int key){
 			else E.cy-=10;
 			break;
 		case S_UPPER:
-			if (E.cy + 10 >= E.screenrows) E.cy = E.screenrows-1;
+			if (E.cy + 10 >= E.numrows) E.cy = E.numrows-1;
 			else E.cy+=10;
 			break;
 	}
@@ -315,8 +316,7 @@ void editorProcessKeypress(){
 			break;
 
 		case PAGE_UP:
-		case PAGE_DOWN:
-			{
+		case PAGE_DOWN:{
 				int times = E.screenrows;
 				while (times--)
 					editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
@@ -337,30 +337,39 @@ void editorProcessKeypress(){
 }
 
 /*** output ***/
+void editorScroll(){// Is it better if we place it inside the 
+	if (E.cy < E.rowoff ){
+		E.rowoff = E.cy;
+	}
+	if (E.cy >= E.rowoff + E.screenrows){
+		E.rowoff = E.cy - E.screenrows + 1;
+	}
+}
+
+void editorDrawWelcomeMsg(struct abuf *ab){
+	char welcome[80];
+	int welcomelen = snprintf(welcome, sizeof(welcome),
+			"Welcome to my VIM  -- version %s", KILO_VERSION);
+
+	if (welcomelen > E.screencols) welcomelen = E.screencols;
+
+	int padding = (E.screencols - welcomelen) / 2;
+	if(padding) abAppend(ab, "~", 1);
+	while (padding --) abAppend(ab, " ", 1);
+
+	abAppend(ab, welcome, welcomelen); // say welcome to users
+}
+
 void editorDrawRows(struct abuf *ab){
 	for(int y=0; y< E.screenrows; y++){
-		if(y >= E.numrows ){
-			// display welcome message
-			if (E.numrows == 0 && y==E.screenrows / 3){
-				char welcome[80];
-				int welcomelen = snprintf(welcome, sizeof(welcome),
-						"Welcome to my VIM  -- version %s", KILO_VERSION);
-
-				if (welcomelen > E.screencols) welcomelen = E.screencols;
-
-				int padding = (E.screencols - welcomelen) / 2;
-				if(padding) abAppend(ab, "~", 1);
-				while (padding --) abAppend(ab, " ", 1);
-
-				abAppend(ab, welcome, welcomelen); // say welcome to users
-			}
-			else{
-				abAppend(ab, "~", 1);
-			}
-		} else {
-			int len = E.row[y].size;
+		int filerow = y + E.rowoff;
+		if(filerow >= E.numrows) {
+			if (E.numrows == 0 && y==E.screenrows / 3) editorDrawWelcomeMsg(ab);
+			else abAppend(ab, "~", 1);
+		} else { // display text line read from file
+			int len = E.row[filerow].size;
 			if (len > E.screencols ) len = E.screencols;
-			abAppend(ab, E.row[y].chars, len);
+			abAppend(ab, E.row[filerow].chars, len);
 		}
 		abAppend(ab, "\x1b[K", 3); // clear the current line
 		if (y < E.screenrows -1) abAppend(ab, "\r\n", 2);
@@ -369,6 +378,7 @@ void editorDrawRows(struct abuf *ab){
 
 
 void editorRefreshScreen() {
+	editorScroll();
 	struct abuf ab = ABUF_INIT;
 
 	abAppend(&ab, "\x1b[?25l", 6); // Turn off cursor before refresh 
@@ -377,6 +387,7 @@ void editorRefreshScreen() {
 	editorDrawRows(&ab); // draw all lines have start with char: ~
 	char buf[32];
 	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
 	abAppend(&ab, buf, strlen(buf)); // position cursor at user current position
 
 	abAppend(&ab, "\x1b[?25h", 6); // Turn on cursor
@@ -389,8 +400,10 @@ void editorRefreshScreen() {
 
 void initEditor(){
 	E.cx = 0;
-	E.cy = 0;
+	E.cy = 0;// point to index of opened file, not index of screen
+	E.rowoff = 0;
 	E.numrows = 0;
+	E.row = NULL;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1 ) die("WindowSize");
 }
 
@@ -398,9 +411,9 @@ int main(int argc, char *argv[]){
 	enableRawMode();
 	initEditor();
 	if (argc >= 2) {
-    editorOpen(argv[1]);
-  }
-	
+		editorOpen(argv[1]);
+	}
+
 
 	while(1){
 		editorRefreshScreen();
