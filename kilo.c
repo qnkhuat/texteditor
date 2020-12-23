@@ -50,6 +50,8 @@ typedef struct erow{ // editor row
 	char *render;
 } erow;
 
+typedef enum {false, true} bool;
+
 
 struct editorConfig { 
 	int cx, cy;
@@ -59,6 +61,7 @@ struct editorConfig {
 	int numrows;
 	erow *row;
 	int dirty;
+	bool edit;
 	char *filename;
 	char statusmsg[80];
 	time_t statusmsg_time;
@@ -132,16 +135,18 @@ int editorReadKey() {
 	}
 
 	// handle upper case cursor moving
-	//switch(c){
-	//	case 'W': return W_UPPER;
-	//	case 'A': return A_UPPER;
-	//	case 'S': return S_UPPER;
-	//	case 'D': return D_UPPER;
-	//	case 'w': return ARROW_UP;
-	//	case 'a': return ARROW_LEFT;
-	//	case 's': return ARROW_DOWN;
-	//	case 'd': return ARROW_RIGHT;
-	//}
+	if (!E.edit){
+		switch(c){
+			case 'W': return W_UPPER;
+			case 'A': return A_UPPER;
+			case 'S': return S_UPPER;
+			case 'D': return D_UPPER;
+			case 'w': return ARROW_UP;
+			case 'a': return ARROW_LEFT;
+			case 's': return ARROW_DOWN;
+			case 'd': return ARROW_RIGHT;
+		}
+	}
 
 	if (c == '\x1b') {
 		char seq[3];
@@ -415,9 +420,8 @@ void editorMoveCursor(int key){
 			else E.cx -= 10;
 			break;
 		case D_UPPER:
-			if (row && E.cx < row->size) {
+			if (row && E.cx < row->size) 
 				E.cx+=10;
-			}
 			break;
 		case W_UPPER:
 			if (E.cy - 10 <= 0) E.cy = 0;
@@ -448,6 +452,11 @@ void editorProcessKeypress(){
 			exit(0);
 			break;
 
+		// toggle editor mode
+		case CTRL_KEY('i'):
+			E.edit = !E.edit;
+			break;
+		
 		case CTRL_KEY('s'):
       editorSave();
       break;
@@ -484,17 +493,19 @@ void editorProcessKeypress(){
 		case ARROW_RIGHT:
 		case ARROW_UP:
 		case ARROW_DOWN:
-		//case W_UPPER:
-		//case A_UPPER:
-		//case S_UPPER:
-		//case D_UPPER:
+		case W_UPPER:
+		case A_UPPER:
+		case S_UPPER:
+		case D_UPPER:
 			editorMoveCursor(c);
 			break;
+
 		case CTRL_KEY('l'):
     case '\x1b': // esc
       break;
 		default:
-			editorInsertChar(c);
+			if(E.edit) // if in edit mode
+				editorInsertChar(c);
 			break;
 	}
 
@@ -551,9 +562,12 @@ void editorDrawRows(struct abuf *ab){
 
 void editorDrawStatusBar(struct abuf *ab) {
 	abAppend(ab, "\x1b[7m", 4);// switch to inverted color
-	char status[80], rstatus[80];
-	int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
+	char status[120], rstatus[120];
+
+	int len = snprintf(status, sizeof(status), 
+		"%.20s - %d lines %s %s",
     E.filename ? E.filename : "[No Name]", E.numrows,
+		E.edit ? "(mode:insert)" : "(mode:visual)",
     E.dirty ? "(modified)" : "");
 	int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d",
 			E.cy + 1, E.numrows);
@@ -621,6 +635,7 @@ void initEditor(){
 	E.numrows = 0;
 	E.row = NULL;
 	E.dirty = 0;
+	E.edit = false;
 	E.filename = NULL;
 	E.statusmsg[0] = '\0';
 	E.statusmsg_time = 0;
