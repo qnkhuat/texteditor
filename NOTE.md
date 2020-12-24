@@ -1,2 +1,0 @@
-- Learn by optimize these code. For example: turn the block: read(...) into a function with default parameters
-- Implement the go-to-line on our own
