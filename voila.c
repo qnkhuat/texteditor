@@ -33,10 +33,10 @@ enum editorKey {
 	DEL_KEY,
 	HOME_KEY,
 	END_KEY,
-	A_UPPER,
-	D_UPPER,
-	W_UPPER,
-	S_UPPER,
+	LEFT_UPPER,
+	RIGHT_UPPER,
+	UP_UPPER,
+	DOWN_UPPER,
 	PAGE_UP,
 	PAGE_DOWN,
 };
@@ -189,14 +189,23 @@ int editorReadKey() {
 	// handle upper case cursor moving
 	if (!E.edit){
 		switch(c){
-			case 'W': return W_UPPER;
-			case 'A': return A_UPPER;
-			case 'S': return S_UPPER;
-			case 'D': return D_UPPER;
+			case 'W': return UP_UPPER;
+			case 'A': return LEFT_UPPER;
+			case 'S': return DOWN_UPPER;
+			case 'D': return RIGHT_UPPER;
 			case 'w': return ARROW_UP;
 			case 'a': return ARROW_LEFT;
 			case 's': return ARROW_DOWN;
 			case 'd': return ARROW_RIGHT;
+			case 'K': return UP_UPPER;
+			case 'H': return LEFT_UPPER;
+			case 'J': return DOWN_UPPER;
+			case 'L': return RIGHT_UPPER;
+			case 'k': return ARROW_UP;
+			case 'h': return ARROW_LEFT;
+			case 'j': return ARROW_DOWN;
+			case 'l': return ARROW_RIGHT;
+
 		}
 	}
 
@@ -832,19 +841,19 @@ void editorMoveCursor(int key){
 		case ARROW_DOWN:
 			if (E.cy < E.numrows) E.cy++;
 			break;
-		case A_UPPER:
+		case LEFT_UPPER:
 			if (E.cx -10 <= 0) E.cx = 0;
 			else E.cx -= 10;
 			break;
-		case D_UPPER:
+		case RIGHT_UPPER:
 			if (row && E.cx < row->size) 
 				E.cx+=10;
 			break;
-		case W_UPPER:
+		case UP_UPPER:
 			if (E.cy - 10 <= 0) E.cy = 0;
 			else E.cy-=10;
 			break;
-		case S_UPPER:
+		case DOWN_UPPER:
 			if (E.cy + 10 >= E.numrows) E.cy = E.numrows-1;
 			else E.cy+=10;
 			break;
@@ -928,10 +937,10 @@ void editorProcessKeypress(){
 		case ARROW_RIGHT:
 		case ARROW_UP:
 		case ARROW_DOWN:
-		case W_UPPER:
-		case A_UPPER:
-		case S_UPPER:
-		case D_UPPER:
+		case UP_UPPER:
+		case LEFT_UPPER:
+		case DOWN_UPPER:
+		case RIGHT_UPPER:
 			editorMoveCursor(c);
 			break;
 

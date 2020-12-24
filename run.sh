@@ -1,2 +1,2 @@
 make
-if [ $? -eq 0 ]; then ./kilo kilo.c; fi
+if [ $? -eq 0 ]; then ./voila voila.c; fi
