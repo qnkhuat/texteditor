@@ -85,6 +85,7 @@ typedef enum {false, true} bool;
 struct editorConfig { 
 	int cx, cy;
 	int rx;
+	int indexoff;
 	int rowoff, coloff; // screen scroll
 	int screenrows, screencols;
 	int numrows;
@@ -272,6 +273,8 @@ int getCursorPosition(int *rows, int*cols){
 	if (buf[0] != '\x1b' || buf[1] != '[') return -1;
 	if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
 
+	cols -= E.indexoff;
+
 	return 0;
 }
 
@@ -283,7 +286,7 @@ int getWindowSize(int *rows, int *cols){
 		if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12 ) return -1;
 		return getCursorPosition(rows, cols);
 	} else {
-		*cols = ws.ws_col;
+		*cols = ws.ws_col - E.indexoff;
 		*rows = ws.ws_row;
 		return 0;
 	}
@@ -735,13 +738,32 @@ void editorFindCallback(char *query, int key) {
 			E.cx = editorRowRxToCx(row, match - row->render);
 			E.rowoff = E.numrows;
 
-
 			saved_hl_line = current;
 			saved_hl = malloc(row->rsize);
 			memcpy(saved_hl, row->hl, row->rsize);
 			memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
 			break;
 		}
+	}
+}
+
+void editorJump() {
+	int saved_cx = E.cx;
+	int saved_cy = E.cy;
+	int saved_coloff = E.coloff;
+	int saved_rowoff = E.rowoff;
+	char* jump_to_char = editorPrompt("Jump to: %s", NULL);
+
+	if (jump_to_char) {
+		int jump_to = atoi(jump_to_char);
+		E.cy = jump_to-1;
+		E.cx = 0;
+		free(jump_to_char);
+	} else {
+		E.cx = saved_cx;
+		E.cy = saved_cy;
+		E.coloff = saved_coloff;
+		E.rowoff = saved_rowoff;
 	}
 }
 
@@ -831,9 +853,8 @@ void editorMoveCursor(int key){
 			if (E.cx!=0) E.cx--;
 			break;
 		case ARROW_RIGHT:
-			if (row && E.cx < row->size) {
+			if (row && E.cx < row->size) 
 				E.cx++;
-			}
 			break;
 		case ARROW_UP:
 			if(E.cy!=0)	E.cy--;
@@ -909,6 +930,13 @@ void editorProcessKeypress(){
 			editorFind();
 			E.edit = false;
 			break;
+
+		case CTRL_KEY('j'):
+			E.edit = true;
+			editorJump();
+			E.edit = false;
+			break;
+
 
 		case BACKSPACE:
 		case CTRL_KEY('h'): // ~ to BACKSPACE
@@ -991,11 +1019,20 @@ void editorDrawWelcomeMsg(struct abuf *ab){
 
 void editorDrawRows(struct abuf *ab){
 	for(int y=0; y< E.screenrows; y++){
+
+
 		int filerow = y + E.rowoff;
 		if(filerow >= E.numrows) {
 			if (E.numrows == 0 && y==E.screenrows / 3) editorDrawWelcomeMsg(ab);
 			else abAppend(ab, "~", 1);
 		} else { // display text line read from file
+			/// draw rows index
+			char line_num[E.indexoff];
+			char line_char[E.indexoff];
+			sprintf(line_num, "%d", filerow+1);
+			sprintf(line_char, "%6s%s", line_num, " ");
+			abAppend(ab, line_char, E.indexoff);
+
 			int len = E.row[filerow].rsize - E.coloff;
 			if (len < 0) len = 0;
 			if (len > E.screencols) len = E.screencols;
@@ -1051,10 +1088,10 @@ void editorDrawStatusBar(struct abuf *ab) {
 			E.dirty ? "(modified)" : "");
 	int rlen = snprintf(rstatus, sizeof(rstatus), "%s | %d/%d",
 			E.syntax ? E.syntax->filetype : "no ft", E.cy + 1, E.numrows);
-	if (len > E.screencols) len = E.screencols;
+	if (len > E.screencols + E.indexoff) len = E.screencols;
 	abAppend(ab, status, len);
-	while (len < E.screencols) {
-		if (E.screencols - len == rlen) {
+	while (len < E.screencols + E.indexoff) {
+		if (E.screencols + E.indexoff - len == rlen) {
 			abAppend(ab, rstatus, rlen);
 			break;
 		} else {
@@ -1087,7 +1124,7 @@ void editorRefreshScreen() {
 	editorDrawMessageBar(&ab);
 	char buf[32];
 	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1,
-			(E.rx - E.coloff) + 1);
+			(E.rx - E.coloff + E.indexoff) + 1);
 	abAppend(&ab, buf, strlen(buf)); // position cursor at user current position
 
 	abAppend(&ab, "\x1b[?25h", 6); // Turn on cursor
@@ -1110,6 +1147,7 @@ void initEditor(){
 	E.cx = 0;
 	E.cy = 0;// point to index of opened file, not index of screen
 	E.rx = 0;
+	E.indexoff = 7;
 	E.rowoff = 0;
 	E.coloff= 0;
 	E.numrows = 0;
@@ -1133,7 +1171,7 @@ int main(int argc, char *argv[]){
 	}
 
 	editorSetStatusMessage(""
-			"HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-I = edit mode | Ctrl-F = find");
+			"HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-I = edit mode | Ctrl-F = find | Ctrl-J = jump");
 
 	while(1){
 		editorRefreshScreen();
