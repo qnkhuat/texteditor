@@ -18,9 +18,9 @@
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
-#define KILO_VERSION "0.0.0"
-#define KILO_TAB_STOP 4
-#define KILO_QUIT_TIMES 3
+#define VOILA_VERSION "0.0.0"
+#define VOILA_TAB_STOP 4
+#define VOILA_QUIT_TIMES 3
 
 #define CTRL_KEY(k) ((k) & 0x1f) // & in this line is bitwise-AND operator
 
@@ -467,7 +467,7 @@ int editorRowCxToRx(erow *row, int cx) {
 	int j;
 	for (j = 0; j < cx; j++) {
 		if (row->chars[j] == '\t')
-			rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+			rx += (VOILA_TAB_STOP - 1) - (rx % VOILA_TAB_STOP);
 		rx++;
 	}
 	return rx;
@@ -478,7 +478,7 @@ int editorRowRxToCx(erow *row, int rx) {
 	int cx;
 	for (cx = 0; cx < row->size; cx++) {
 		if (row->chars[cx] == '\t')
-			cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+			cur_rx += (VOILA_TAB_STOP - 1) - (cur_rx % VOILA_TAB_STOP);
 		cur_rx++;
 
 		if (cur_rx > rx) return cx;
@@ -493,14 +493,14 @@ void editorUpdateRow(erow *row){
 		if (row->chars[j] == '\t') tabs++;
 
 	free(row->render);
-	row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+	row->render = malloc(row->size + tabs*(VOILA_TAB_STOP - 1) + 1);
 
 	// copy text to render
 	int idx = 0;
 	for (j=0;j < row->size; j++){
 		if (row->chars[j] =='\t') {
 			row->render[idx++] = ' ';
-			while(idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+			while(idx % VOILA_TAB_STOP != 0) row->render[idx++] = ' ';
 		} else{
 			row->render[idx++] = row->chars[j];
 		}
@@ -888,7 +888,7 @@ void editorMoveCursor(int key){
 }
 
 void editorProcessKeypress(){
-	static int quit_times = KILO_QUIT_TIMES;
+	static int quit_times = VOILA_QUIT_TIMES;
 	int c = editorReadKey();
 
 	switch(c){
@@ -981,7 +981,7 @@ void editorProcessKeypress(){
 			break;
 	}
 
-	quit_times = KILO_QUIT_TIMES;
+	quit_times = VOILA_QUIT_TIMES;
 }
 
 /*** output ***/
@@ -1006,7 +1006,7 @@ void editorScroll() {
 void editorDrawWelcomeMsg(struct abuf *ab){
 	char welcome[80];
 	int welcomelen = snprintf(welcome, sizeof(welcome),
-			"Welcome to my VIM  -- version %s", KILO_VERSION);
+			"Welcome to my VOILA -- version %s", VOILA_VERSION);
 
 	if (welcomelen > E.screencols) welcomelen = E.screencols;
 
